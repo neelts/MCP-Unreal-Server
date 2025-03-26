@@ -27,7 +27,17 @@ git clone https://github.com/your-org/mcp-unreal-server.git
 cd mcp-unreal-server
 
 # Install dependencies
-pip install -r requirements.txt
+pip install .
+
+# VS Code MCP settings
+"mcp-server-unreal": {
+    "command": "python",
+    "args": [
+        "-m",
+        "mcp_server_unreal"
+    ],
+    "env": {}
+},
 ```
 
 ## Configuration
