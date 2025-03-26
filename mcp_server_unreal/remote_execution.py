@@ -450,7 +450,14 @@ class _RemoteExecutionCommandConnection(object):
         Returns:
             The message that was received.
         '''
-        data = self._command_channel_socket.recv(4096)
+        data = b''
+        while True:
+            part = self._command_channel_socket.recv(4096)
+            if not part:
+                break
+            data += part
+            if len(part) < 4096:
+                break
         if data:
             message = _RemoteExecutionMessage(None, None)
             if message.from_json_bytes(data) and message.passes_receive_filter(self._node_id) and message.type_ == expected_type:
@@ -555,7 +562,7 @@ class _RemoteExecutionMessage(object):
             bool: True if this message could be parsed, False otherwise.
         '''
         try:
-            json_obj = _json.loads(json_str, encoding='utf-8')
+            json_obj = _json.loads(json_str)
             # Read and validate required protocol version information
             if json_obj['version'] != _PROTOCOL_VERSION:
                 raise ValueError('"version" is incorrect (got {0}, expected {1})!'.format(json_obj['version'], _PROTOCOL_VERSION))

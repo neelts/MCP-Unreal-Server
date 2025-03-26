@@ -12,8 +12,8 @@ logging.basicConfig(level=logging.INFO,
                 format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 _logger = logging.getLogger("UnrealMCPServer")
 
-# 添加这一行来降低 mcp.server.lowlevel.server 的日志级别
-# 初始设置为Error等级,导致在Cline中存在警告信息,故降低日志级别
+# Add this line to lower the log level of mcp.server.lowlevel.server
+# Initially set to Error level, causing warning messages in Cline, so lower the log level
 logging.getLogger("mcp.server.lowlevel.server").setLevel(logging.WARNING)
 
 # Configure file handler with more concise format for frequent operations
@@ -33,36 +33,36 @@ from mcp.server import NotificationOptions, Server
 from pydantic import AnyUrl
 import mcp.server.stdio
 
-from .remote_execution import RemoteExecution, RemoteExecutionConfig,MODE_EXEC_FILE,MODE_EXEC_STATEMENT,MODE_EVAL_STATEMENT
+from mcp_server_unreal.remote_execution import RemoteExecution, RemoteExecutionConfig, MODE_EXEC_FILE, MODE_EXEC_STATEMENT, MODE_EVAL_STATEMENT
 
-# 全局连接变量
+# Global connection variable
 _unreal_connection: Optional[RemoteExecution] = None
 _node_monitor_task: Optional[asyncio.Task] = None
 
 def get_unreal_connection(host: str = "239.0.0.1", port: int = 6766) -> RemoteExecution:
-    """获取或创建持久化的Unreal连接"""
+    """Get or create a persistent Unreal connection"""
     global _unreal_connection
     
-    # 如果已有连接，检查是否仍然有效
+    # If there is an existing connection, check if it is still valid
     if _unreal_connection is not None:
         try:
             nodes = _unreal_connection.remote_nodes
             return _unreal_connection
         except Exception as e:
-            _logger.warning(f"现有连接已失效: {str(e)}")
+            _logger.warning(f"Existing connection is invalid: {str(e)}")
             try:
                 _unreal_connection.stop()
             except:
                 pass
             _unreal_connection = None
     
-    # 创建新连接
+    # Create a new connection
     if _unreal_connection is None:
         config = RemoteExecutionConfig()
         config.multicast_group_endpoint = (host, port)
         _unreal_connection = RemoteExecution(config)
         _unreal_connection.start()
-        _logger.info("创建新的持久化Unreal连接")
+        _logger.info("Created a new persistent Unreal connection")
     
     return _unreal_connection
 
@@ -77,7 +77,7 @@ class McpUnrealServer:
     def _setup_handlers(self):
         @self.server.list_resources()
         async def handle_list_resources() -> list[types.Resource]:
-            """列出可用的Unreal节点资源。"""
+            """List available Unreal node resources."""
             resources = []
             if self.remote_execution:
                 for node in self.remote_execution.remote_nodes:
@@ -85,7 +85,7 @@ class McpUnrealServer:
                         types.Resource(
                             uri=AnyUrl(f"unreal://{node['node_id']}"),
                             name=f"Unreal Instance: {node['node_id']}",
-                            description="Unreal Engine实例",
+                            description="Unreal Engine instance",
                             mimeType="application/x-unreal",
                         )
                     )
@@ -93,11 +93,11 @@ class McpUnrealServer:
 
         @self.server.list_tools()
         async def handle_list_tools() -> list[types.Tool]:
-            """列出可用的工具。"""
+            """List available tools."""
             return  [
                 types.Tool(
                     name="execute-python",
-                    description="在Unreal中执行Python代码",
+                    description="Execute Python code in Unreal",
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -109,29 +109,29 @@ class McpUnrealServer:
                 ),
             ]
 
-        # 添加资源模板处理器
+        # Add resource template handler
         @self.server.list_resource_templates()
         async def handle_list_resource_templates() -> list[types.ResourceTemplate]:
-            """列出可用的资源模板。"""
+            """List available resource templates."""
             return []
 
         @self.server.call_tool()
         async def handle_call_tool(
             name: str, arguments: dict | None
         ) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
-            """处理工具执行请求。"""
+            """Handle tool execution request."""
             if name == "connect-unreal":
                 return await self._handle_connect_unreal(arguments or {})
             elif name == "execute-python":
                 return await self._handle_execute_python(arguments or {})
-            raise ValueError(f"未知的工具: {name}")
+            raise ValueError(f"Unknown tool: {name}")
 
     async def _handle_connect_unreal(self, arguments: dict) -> list[types.TextContent]:
-        """处理Unreal连接请求。"""
+        """Handle Unreal connection request."""
         try:
             host = arguments.get("host", "239.0.0.1")
             port = arguments.get("port", 6766)
-            _logger.info(f"尝试连接Unreal: host={host}, port={port}")
+            _logger.info(f"Attempting to connect to Unreal: host={host}, port={port}")
 
             if self.remote_execution:
                 self.remote_execution.stop()
@@ -142,64 +142,64 @@ class McpUnrealServer:
             self.remote_execution = RemoteExecution(config)
             self.remote_execution.start()
 
-            # 等待发现节点
+            # Wait for nodes to be discovered
             await asyncio.sleep(2)
             nodes = self.remote_execution.remote_nodes
             
             if not nodes:
-                _logger.warning("未发现任何Unreal节点")
-                return [types.TextContent(type="text", text="未发现任何Unreal节点")]
+                _logger.warning("No Unreal nodes found")
+                return [types.TextContent(type="text", text="No Unreal nodes found")]
 
-            # 更新已连接节点列表
+            # Update the list of connected nodes
             self.connected_nodes = {node["node_id"]: node for node in nodes}
             await self.server.request_context.session.send_resource_list_changed()
 
-            # 启动节点监控任务
+            # Start the node monitoring task
             if self._node_monitor_task:
                 self._node_monitor_task.cancel()
             self._node_monitor_task = asyncio.create_task(self._monitor_nodes())
 
-            _logger.info(f"成功连接到Unreal，发现{len(nodes)}个节点")
-            _logger.info(f"当前节点列表为: {self.connected_nodes.keys()}")
+            _logger.info(f"Successfully connected to Unreal, found {len(nodes)} nodes")
+            _logger.info(f"Current node list: {self.connected_nodes.keys()}")
             return [types.TextContent(
                 type="text",
-                text=f"成功连接到Unreal，发现{len(nodes)}个节点"
+                text=f"Successfully connected to Unreal, found {len(nodes)} nodes"
             )]
         except Exception as e:
-            _logger.error(f"连接Unreal失败: {str(e)}")
+            _logger.error(f"Failed to connect to Unreal: {str(e)}")
             return [types.TextContent(
                 type="text",
-                text=f"连接Unreal失败: {str(e)}"
+                text=f"Failed to connect to Unreal: {str(e)}"
             )]
 
     async def _handle_execute_python(self, arguments: dict) -> list[types.TextContent]:
-        """处理Python代码执行请求。"""
+        """Handle Python code execution request."""
         global _unreal_connection
         
-        # 确保连接存在且有效
+        # Ensure the connection exists and is valid
         try:
             if not _unreal_connection or not _unreal_connection.remote_nodes:
                 _unreal_connection = get_unreal_connection()
-                # 等待一小段时间以确保连接建立
+                # Wait a short time to ensure the connection is established
                 await asyncio.sleep(1)
                 
             if not _unreal_connection or not _unreal_connection.remote_nodes:
-                return [types.TextContent(type="text", text="无法连接到Unreal实例，请确保Unreal正在运行并启用了远程执行")]
+                return [types.TextContent(type="text", text="Unable to connect to Unreal instance, please ensure Unreal is running and remote execution is enabled")]
         except Exception as e:
-            return [types.TextContent(type="text", text=f"连接Unreal失败: {str(e)}")]
+            return [types.TextContent(type="text", text=f"Failed to connect to Unreal: {str(e)}")]
 
         code = arguments.get("code")
         if not code:
-            return [types.TextContent(type="text", text="未提供Python代码")]
+            return [types.TextContent(type="text", text="No Python code provided")]
 
         unattended = arguments.get("unattended", True)
         exec_mode = MODE_EXEC_STATEMENT
 
         try:
-            # 获取第一个可用节点
+            # Get the first available node
             nodes = _unreal_connection.remote_nodes
             if not nodes:
-                return [types.TextContent(type="text", text="未发现任何Unreal节点")]
+                return [types.TextContent(type="text", text="No Unreal nodes found")]
             
             node_id = nodes[0]["node_id"]
             _unreal_connection.open_command_connection(node_id)
@@ -207,17 +207,18 @@ class McpUnrealServer:
             result = _unreal_connection.run_command(
                 code, unattended=unattended, exec_mode=exec_mode
             )
+            
             _unreal_connection.close_command_connection()
 
             if not result.get("success", False):
                 return [types.TextContent(
                     type="text",
-                    text=f"执行失败: {result.get('result', '未知错误')}"
+                    text=f"Execution failed: {result.get('result', 'Unknown error')}"
                 )]
-
+                
             return [types.TextContent(
                 type="text",
-                text=f"执行结果:\n{result.get('result', '')}"
+                text=f"{result.get('output', '')}"
             )]
         except Exception as e:
             if _unreal_connection:
@@ -227,30 +228,30 @@ class McpUnrealServer:
                     pass
             return [types.TextContent(
                 type="text",
-                text=f"执行失败: {str(e)}"
+                text=f"Execution failed: {str(e)}"
             )]
 
     async def _monitor_nodes(self):
-        """监控节点状态的异步任务。"""
+        """Asynchronous task to monitor node status."""
         while True:
             try:
-                await asyncio.sleep(1)  # 每秒检查一次
+                await asyncio.sleep(1)  # Check every second
                 if not self.remote_execution:
                     break
 
                 current_nodes = {node["node_id"]: node for node in self.remote_execution.remote_nodes}
                 
-                # 检查节点变化
+                # Check for node changes
                 if current_nodes != self.connected_nodes:
                     self.connected_nodes = current_nodes
                     await self.server.request_context.session.send_resource_list_changed()
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                _logger.error(f"节点监控错误: {str(e)}")
+                _logger.error(f"Node monitoring error: {str(e)}")
 
     async def close(self):
-        """关闭服务器和所有连接。"""
+        """Close the server and all connections."""
         if self._node_monitor_task:
             self._node_monitor_task.cancel()
             try:
@@ -263,24 +264,24 @@ class McpUnrealServer:
 
 @asynccontextmanager
 async def server_lifespan(server: Server) -> AsyncIterator[Dict[str, Any]]:
-    """管理服务器启动和关闭生命周期"""
+    """Manage server startup and shutdown lifecycle"""
     try:
-        # 记录服务器启动
-        _logger.info("UnrealMCP服务器正在启动")
+        # Log server startup
+        _logger.info("UnrealMCP server is starting")
         
-        # 尝试在启动时连接到Unreal
+        # Try to connect to Unreal at startup
         try:
-            # 这将初始化全局连接
+            # This will initialize the global connection
             unreal = get_unreal_connection()
-            _logger.info("成功连接到Unreal")
+            _logger.info("Successfully connected to Unreal")
         except Exception as e:
-            _logger.warning(f"无法在启动时连接到Unreal: {str(e)}")
-            _logger.warning("请确保Unreal实例正在运行并启用了远程执行")
+            _logger.warning(f"Failed to connect to Unreal at startup: {str(e)}")
+            _logger.warning("Please ensure the Unreal instance is running and remote execution is enabled")
         
-        # 返回空上下文 - 我们使用全局连接
+        # Return empty context - we use global connection
         yield {}
     finally:
-        # 在关闭时清理全局连接
+        # Clean up global connection on shutdown
         global _unreal_connection, _node_monitor_task
         if _node_monitor_task:
             _node_monitor_task.cancel()
@@ -291,15 +292,15 @@ async def server_lifespan(server: Server) -> AsyncIterator[Dict[str, Any]]:
             _node_monitor_task = None
             
         if _unreal_connection:
-            _logger.info("正在断开与Unreal的连接")
+            _logger.info("Disconnecting from Unreal")
             _unreal_connection.stop()
             _unreal_connection = None
-        _logger.info("UnrealMCP服务器已关闭")
+        _logger.info("UnrealMCP server has shut down")
 
 async def main():
     unreal_server = McpUnrealServer("mcp-server-unreal", lifespan=server_lifespan)
     try:
-        # 使用实例中的server对象来保持handler注册一致性
+        # Use the server object in the instance to maintain handler registration consistency
         async with mcp.server.stdio.stdio_server() as (read_stream, write_stream):
             await unreal_server.server.run(
                 read_stream,
@@ -315,3 +316,6 @@ async def main():
             )
     finally:
         unreal_server.close()
+
+if __name__ == "__main__":
+    asyncio.run(main())
