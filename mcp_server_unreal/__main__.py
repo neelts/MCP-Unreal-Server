@@ -102,6 +102,7 @@ class McpUnrealServer:
                         "type": "object",
                         "properties": {
                             "code": {"type": "string"},
+                            "exec_mode": {"type": "string", "enum": [MODE_EXEC_FILE, MODE_EXEC_STATEMENT, MODE_EVAL_STATEMENT], "default": MODE_EXEC_STATEMENT},
                             "unattended": {"type": "boolean", "default": True},
                         },
                         "required": ["code"],
@@ -193,7 +194,7 @@ class McpUnrealServer:
             return [types.TextContent(type="text", text="No Python code provided")]
 
         unattended = arguments.get("unattended", True)
-        exec_mode = MODE_EXEC_STATEMENT
+        exec_mode = arguments.get("exec_mode", MODE_EXEC_STATEMENT)
 
         try:
             # Get the first available node
@@ -209,16 +210,10 @@ class McpUnrealServer:
             )
             
             _unreal_connection.close_command_connection()
-
-            if not result.get("success", False):
-                return [types.TextContent(
-                    type="text",
-                    text=f"Execution failed: {result.get('result', 'Unknown error')}"
-                )]
-                
+            
             return [types.TextContent(
                 type="text",
-                text=f"{result.get('output', '')}"
+                text=f"{result}"
             )]
         except Exception as e:
             if _unreal_connection:
@@ -226,10 +221,16 @@ class McpUnrealServer:
                     _unreal_connection.close_command_connection()
                 except:
                     pass
-            return [types.TextContent(
-                type="text",
-                text=f"Execution failed: {str(e)}"
-            )]
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"{result}"
+                ), 
+                types.TextContent(
+                    type="text",
+                    text=f"Failed: {str(e)}"
+                )
+            ]
 
     async def _monitor_nodes(self):
         """Asynchronous task to monitor node status."""
